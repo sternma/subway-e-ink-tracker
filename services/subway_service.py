@@ -55,11 +55,13 @@ class SubwayService:
         self._stop_event = threading.Event()
         self._current_result: Optional[SubwayResult] = None
 
+    def _feed_url(self, line_id: str) -> str:
+        return NYCTFeed._train_to_url.get(line_id, line_id)
+
     def _fetch_feed(self, line_id: str) -> NYCTFeed:
         """Fetch a feed with an explicit timeout so update loops cannot hang indefinitely."""
         feed = NYCTFeed(line_id, fetch_immediately=False)
-        feed_url = NYCTFeed._train_to_url.get(line_id, line_id)
-        response = requests.get(feed_url, timeout=self.request_timeout_seconds)
+        response = requests.get(self._feed_url(line_id), timeout=self.request_timeout_seconds)
         response.raise_for_status()
         feed.load_gtfs_bytes(response.content)
         return feed
@@ -152,16 +154,28 @@ class SubwayService:
         arrivals: List[TrainArrival] = []
         unavailable: set[str] = set()
 
+        # N/R (and other same-trunk letters) share one GTFS URL. Fetch each
+        # URL once; filter_trips returns every trip at the stop, so a second
+        # fetch of the same feed would duplicate every arrival.
+        lines_by_url: dict[str, list[str]] = {}
         for line_id in (config.TRAIN_LINE_1, config.TRAIN_LINE_2):
+            lines_by_url.setdefault(self._feed_url(line_id), []).append(line_id)
+
+        for line_ids in lines_by_url.values():
             try:
-                feed = self._fetch_feed(line_id)
+                feed = self._fetch_feed(line_ids[0])
             except Exception as e:
-                logger.error(f"Error fetching feed for line {line_id}: {str(e)}")
-                unavailable.add(line_id)
+                logger.error(f"Error fetching feed for line {line_ids[0]}: {str(e)}")
+                unavailable.update(line_ids)
                 continue
 
             trains = feed.filter_trips(headed_for_stop_id=self.station_id)
-            logger.info(f"Found {len(trains)} trains for line {line_id}")
+            logger.info(
+                "Found %s trains at %s from feed %s",
+                len(trains),
+                self.station_id,
+                ",".join(line_ids),
+            )
             for train in trains:
                 arrival = self._process_train(train)
                 if arrival:
