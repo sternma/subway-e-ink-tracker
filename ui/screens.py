@@ -10,6 +10,7 @@ from typing import List, Optional, Tuple
 from PIL import ImageDraw
 
 from config.config import config
+from ui import palette
 from ui.screen import Screen, ScreenProfile
 from ui.panes import RenderContext
 from services.subway_service import TrainArrival
