@@ -6,6 +6,7 @@ from typing import Optional
 from dataclasses import dataclass
 from data import AppData, DataHub, DataKey
 from config.config import config
+from ui import backlight
 from ui.display import Display, DisplayIntent
 from ui.panes import RenderContext
 from ui.screens import screen_manager
@@ -71,6 +72,7 @@ class Runner:
         self.min_interval = config.timing.DISPLAY_MIN_INTERVAL_SECONDS
         self._previous_render_ctx: Optional[RenderContext] = None
         self._previous_screen_name: Optional[str] = None
+        self._backlight: Optional[backlight.Backlight] = None
         self.data_hub.subscribe(self.handle_data_update)
 
     def handle_data_update(self, key: DataKey, data: AppData):
@@ -255,24 +257,32 @@ class Runner:
                 intent=DisplayIntent.SCREEN_TRANSITION,
             )
 
+    def _toggle_backlight(self) -> None:
+        """Turn the panel on or off; a no-op when the backlight isn't writable."""
+        if self._backlight is None:
+            logger.info("Tap ignored: no writable backlight device")
+            return
+        self._backlight.toggle()
+
     def _start_input_listeners(self) -> None:
         # Interactive screen switching: press space to advance screens.
-        # No-ops when there's no tty (e.g. running as a systemd service).
-        if start_spacebar_listener(self._advance_screen):
+        # No-ops when there's no tty (e.g. running as a systemd service), and
+        # with a single registered screen there is nothing to advance to.
+        if screen_manager.count() > 1 and start_spacebar_listener(self._advance_screen):
             logger.info(
                 "Screen switching enabled: press Space to cycle screens (%s)",
                 ", ".join(screen_manager.names()),
             )
-        if config.TOUCH_ENABLED and start_touch_listener(
-            self._advance_screen,
-            channel=config.TOUCH_CHANNEL,
-            address=config.TOUCH_I2C_ADDRESS,
+
+        if not config.TOUCH_ENABLED:
+            return
+
+        self._backlight = backlight.discover()
+        if start_touch_listener(
+            self._toggle_backlight,
+            device_path=config.TOUCH_DEVICE,
         ):
-            logger.info(
-                "MPR121 touch screen switching enabled on channel %s at address 0x%02x",
-                config.TOUCH_CHANNEL,
-                config.TOUCH_I2C_ADDRESS,
-            )
+            logger.info("Touch enabled: tap the screen to toggle the backlight")
 
     def run(self):
         """Main run method"""

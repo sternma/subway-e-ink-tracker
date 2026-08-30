@@ -30,16 +30,16 @@ def _draw_transit_chrome(draw: ImageDraw.ImageDraw) -> None:
     """Section dividers for the transit screen."""
     d = config.display
     # Header / train divider
-    draw.line((0, d.HEADER_HEIGHT, d.WIDTH, d.HEADER_HEIGHT), fill=0)
+    draw.line((0, d.HEADER_HEIGHT, d.WIDTH, d.HEADER_HEIGHT), fill=palette.RULE)
     # Train / bottom divider (full width)
     bottom_divider_y = d.TRAIN_SECTION_Y + d.TRAIN_SECTION_HEIGHT
-    draw.line((0, bottom_divider_y, d.WIDTH, bottom_divider_y), fill=0)
+    draw.line((0, bottom_divider_y, d.WIDTH, bottom_divider_y), fill=palette.RULE)
     # Vertical line for the right (hourly) lane
     draw.line((d.VERTICAL_LANE_X, d.HEADER_HEIGHT,
-               d.VERTICAL_LANE_X, d.TRAIN_SECTION_Y + d.TRAIN_SECTION_HEIGHT), fill=0)
+               d.VERTICAL_LANE_X, d.TRAIN_SECTION_Y + d.TRAIN_SECTION_HEIGHT), fill=palette.RULE)
     # Vertical line splitting the bottom section (bikes | weather)
     bottom_vertical_x = d.BOTTOM_VERTICAL_OFFSET
-    draw.line((bottom_vertical_x, bottom_divider_y, bottom_vertical_x, d.HEIGHT), fill=0)
+    draw.line((bottom_vertical_x, bottom_divider_y, bottom_vertical_x, d.HEIGHT), fill=palette.RULE)
 
 
 def _train_key(train: Optional[TrainArrival]) -> Optional[tuple[str, int]]:
@@ -200,9 +200,12 @@ class ScreenManager:
 
 # Registered screens, in order. Spacebar advances through this order.
 # The first is the default/active at startup.
+#
+# The BirdNET screens are built above but deliberately left unregistered: this
+# build has no BirdNET-Pi sensor to feed them, and their layouts are still tuned
+# for the 825x1200 e-ink panel this project started on (BirdPane's species grid
+# computes an x of 783, which overflows a 720px-wide screen). Re-register them
+# only alongside a layout pass.
 screen_manager = ScreenManager([
     ("transit", build_transit_screen()),
-    ("bird-collage-named", build_named_bird_collage_screen()),
-    ("birds", build_birds_screen()),
-    ("bird-profile", build_bird_profile_screen()),
 ])

@@ -90,7 +90,7 @@ def test_touch_config_defaults(monkeypatch):
         "CITIBIKE_STATION_ID": "file-bike-station",
         "CITIBIKE_STATION_NAME": "File Bike Station",
     }
-    for key in [*file_values.keys(), "TOUCH_ENABLED", "TOUCH_CHANNEL", "TOUCH_I2C_ADDRESS"]:
+    for key in [*file_values.keys(), "TOUCH_ENABLED", "TOUCH_DEVICE", "DISPLAY_ROTATION"]:
         monkeypatch.delenv(key, raising=False)
 
     def fake_load_dotenv(path, override=False):
@@ -109,9 +109,9 @@ def test_touch_config_defaults(monkeypatch):
     assert spec.loader is not None
     spec.loader.exec_module(module)
 
-    assert module.config.TOUCH_ENABLED is False
-    assert module.config.TOUCH_CHANNEL == 0
-    assert module.config.TOUCH_I2C_ADDRESS == 0x5A
+    assert module.config.TOUCH_ENABLED is True
+    assert module.config.TOUCH_DEVICE is None
+    assert module.config.DISPLAY_ROTATION == 0
 
 
 def test_timing_config_uses_dotenv_and_shell_overrides(monkeypatch):

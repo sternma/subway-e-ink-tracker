@@ -1,24 +1,21 @@
 [project]
 name = "subway-eink"
 version = "0.1.0"
-description = "Raspberry Pi e-ink display for transit, weather, bike, and BirdNET observations"
+description = "Raspberry Pi transit, weather and bike display for the Touch Display 2"
 readme = "README.md"
 requires-python = ">=3.13"
+# The Touch Display 2 is driven through the kernel's DRM fbdev node and its
+# touchscreen through evdev, so no GPIO, SPI or I2C libraries are needed. That
+# also sidesteps RPi.GPIO, which does not support the Pi 5's RP1 south bridge.
 dependencies = [
-    "adafruit-blinka>=8.50.0; sys_platform == 'linux'",
-    "adafruit-circuitpython-mpr121>=2.1.21; sys_platform == 'linux'",
     "cairocffi>=1.7.1",
     "cairosvg>=2.7.1",
-    "gpiozero>=2.0.1; sys_platform == 'linux'",
     "numpy>=2.1.3",
     "nyct-gtfs>=2.0.0",
     "pillow>=11.0.0",
     "python-dotenv>=1.0.1",
     "pytz>=2024.2",
     "requests>=2.32.3",
-    "IT8951 @ git+https://github.com/GregDMeyer/IT8951; sys_platform == 'linux'",
-    "rpi-gpio>=0.7.1; sys_platform == 'linux'",
-    "spidev>=3.6; sys_platform == 'linux'",
 ]
 
 [dependency-groups]

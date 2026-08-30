@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw
 
 from config.config import config
 from data.models import AppData
+from ui import palette
 
 
 @dataclass
@@ -91,7 +92,7 @@ class Pane:
         self.time = config.time
 
     def render(self, img: Image.Image, ctx: RenderContext) -> None:
-        tile = Image.new('L', (self.w, self.h), 255)
+        tile = Image.new('RGB', (self.w, self.h), palette.PAPER)
         surface = PaneSurface(tile, (self.x, self.y))
         self.paint(surface, ctx)
         img.paste(tile, (self.x, self.y))

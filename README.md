@@ -1,5 +1,5 @@
-# e-ink Subway & Weather Display
-A Raspberry Pi-powered e-ink display showing real-time subway arrival times, Citi Bike availability, and weather forecasts. Perfect for mounting on your wall to check train times and weather before heading out.
+# Subway & Weather Display
+A Raspberry Pi-powered wall display showing real-time subway arrival times, Citi Bike availability, and weather forecasts. This fork targets a Raspberry Pi 5 with the official 10-inch Touch Display 2 (1200×1920 DSI LCD). The original project drove a Waveshare 9.7" e-ink panel.
 
 Full Post [here](https://sambroner.com/posts/raspberry-pi-train).
 
@@ -9,7 +9,8 @@ Full Post [here](https://sambroner.com/posts/raspberry-pi-train).
 - Current weather and hourly/daily forecast (Open-Meteo — no API key)
 - BirdNET-Pi observation and collage screens fetched over SSH from a remote SQLite database
 - Debug mode with automatic image preview
-- Native e-ink display support on Raspberry Pi
+- Native DSI LCD output on Raspberry Pi 5 (Touch Display 2)
+- Tap the screen to toggle the backlight
 
 <p align="center">
   <img src="assets/images/display_demo.jpeg" alt="The display mounted in a cherry frame on the wall" width="45%">
@@ -22,26 +23,28 @@ Full Post [here](https://sambroner.com/posts/raspberry-pi-train).
 ## Getting Started
 
 ### Hardware
-- Raspberry Pi 4b+
-    - SD Card, power supply, (optionally keyboard, mouse, hdmi cord, etc.)
-- [Waveshare 9.7inch E-Ink display HAT for Raspberry Pi](https://www.waveshare.com/product/displays/e-paper/9.7inch-e-paper-hat.htm)
-- Optional MPR121 capacitive touch breakout for screen switching
-
-(For the frame and mounting, see [Physical Build](#physical-build) below.)
+- Raspberry Pi 5 (1GB is enough)
+- Raspberry Pi OS Lite (64-bit)
+- [Raspberry Pi Touch Display 2, 10-inch](https://www.raspberrypi.com/products/touch-display-2/) (1200×1920, DSI)
 
 ### Raspberry Pi Setup
-0. Figure out how you're going to connect to the Raspberry Pi
-1. Install uv and Git LFS
-2. Enable the SPI interface
-3. Attach the e-ink display to the Raspberry Pi
+The 10-inch panel does not auto-detect reliably on Lite. Add this overlay to `/boot/firmware/config.txt` and reboot:
+
+```text
+dtoverlay=vc4-kms-dsi-ili79600-10-1inch
+```
+
+Then install the app (Git LFS is not required; bird screens are unregistered):
 
 ```bash
-git lfs install
-git clone https://github.com/SamBroner/subway-e-ink-tracker.git
+curl -LsSf https://astral.sh/uv/install.sh | sh
+sudo apt-get install -y git libcairo2
+git clone https://github.com/sternma/subway-e-ink-tracker.git
 cd subway-e-ink-tracker
-git lfs pull
 uv sync
 ```
+
+Or run `sudo bash scripts/provision_pi.sh` after a first clone.
 
 Bird illustration assets are stored in Git LFS. If you skip `git lfs pull`, the
 transit display still runs, but bird screens will use missing-art placeholders.
@@ -70,7 +73,7 @@ local). Copy `config/.env.template` and fill it in:
 | `STATION_ID` | yes | MTA station ID for arrivals (e.g. `F20S`) |
 | `TRAIN_LINE_1`, `TRAIN_LINE_2` | yes | Train lines to monitor (e.g. `F`, `G`) |
 | `CITIBIKE_STATION_ID` | yes | Citi Bike station UUID (see below) |
-| `CITIBIKE_STATION_NAME` | yes | Display name for the bike station |
+| `CITIBIKE_STATION_NAME` | yes | Station name stored with the bike snapshot (not drawn on screen) |
 | `WEATHER_LAT`, `WEATHER_LON` | no | Coordinates (defaults to NYC center) |
 | `BIRDNET_SSH_HOST` | no | SSH host alias for the BirdNET-Pi sensor (defaults to `birdnet`) |
 | `BIRDNET_DB_PATH` | no | Remote BirdNET-Pi SQLite path (defaults to `~/BirdNET-Pi/scripts/birds.db`) |
@@ -85,9 +88,11 @@ local). Copy `config/.env.template` and fill it in:
 | `CITIBIKE_UPDATE_SECONDS` | no | Citi Bike feed refresh interval (defaults to `60`) |
 | `DISPLAY_MIN_INTERVAL_SECONDS` | no | Minimum interval for routine display redraws (defaults to `1`) |
 | `DISPLAY_CLEAR_COOLDOWN_SECONDS` | no | Cooldown after large display updates (defaults to `5`) |
-| `TOUCH_ENABLED` | no | `true` enables optional MPR121 capacitive touch screen switching |
-| `TOUCH_CHANNEL` | no | MPR121 electrode index to poll (defaults to `0`) |
-| `TOUCH_I2C_ADDRESS` | no | MPR121 I2C address (defaults to `0x5a`) |
+| `TOUCH_ENABLED` | no | `true` (default) makes a tap toggle the backlight |
+| `TOUCH_DEVICE` | no | evdev node; empty auto-detects the Ilitek touchscreen |
+| `DISPLAY_DEVICE` | no | Framebuffer path (defaults to `/dev/fb0`) |
+| `DISPLAY_ROTATION` | no | 0, 90, 180, or 270 (applied at the display layer) |
+| `BACKLIGHT_BRIGHTNESS` | no | Startup brightness 0–100 (defaults to `100`) |
 | `DEBUG` | no | `true` saves a render to `debug_output/` instead of driving the display |
 | `DEBUG_FRAME_HISTORY` | no | `true` also saves timestamped debug frames and `debug_output/frame_manifest.csv` |
 | `QUIET_MODE` | no | `true` suppresses console output |
@@ -116,28 +121,12 @@ ssh -o BatchMode=yes birdnet \
 The app treats BirdNET-Pi as read-only, groups recent rows from the `detections`
 table, and renders loading/offline states when the sensor is unreachable.
 
-### Optional Touch Input
+### Touch and backlight
 
-The app can use one MPR121 capacitive touch electrode to advance screens. Wire
-the breakout to Raspberry Pi I2C bus 1:
-
-| Wire | Pi connection |
-|---|---|
-| red | pin 1 / 3.3V |
-| blue | pin 3 / SDA |
-| yellow | pin 5 / SCL |
-| black | pin 6 / GND |
-| brass button | MPR121 E0 |
-
-Enable it with:
-
-```bash
-TOUCH_ENABLED=true
-TOUCH_CHANNEL=0
-TOUCH_I2C_ADDRESS=0x5a
-```
-
-`sudo i2cdetect -y 1` should show `5a`.
+The 10-inch panel's Ilitek controller appears as `/dev/input/event*`
+(`11-0041 ili_v3`). A tap toggles `/sys/class/backlight/*/bl_power`. The
+`video` group needs write access to that sysfs node; `scripts/provision_pi.sh`
+installs the udev rule.
 
 ### Running
 
@@ -148,22 +137,16 @@ If `DEBUG=true` in your environment:
 - The image viewer will refresh automatically when new data arrives
 
 If `DEBUG=false`:
-- On Raspberry Pi: The e-ink display will update
-- On other platforms: An error will be raised (e-ink display only works on Raspberry Pi)
+- On Raspberry Pi: the DSI framebuffer is updated
+- Elsewhere: the app exits unless `DEBUG=true`
 
 To run:
 ```bash
 uv run runner.py
 ```
 
-Screen switching cycles through:
-
-```text
-transit
-bird-collage-named
-birds
-bird-profile
-```
+This build registers only the `transit` screen. BirdNET screens remain in the
+tree but are unregistered until they are retuned for 1200×1920.
 
 ## Physical Build
 
@@ -206,29 +189,10 @@ Figuring out the right display mode was annoying. The full spec is [here](https:
 - IT8951 library by GregDMeyer: https://github.com/GregDMeyer/IT8951
 
 ## Setting up as a service
-To have the display start automatically on boot, create a systemd service:
 
-```ini
-[Unit]
-Description=Subway E-Ink Display Service
-After=network.target
-
-[Service]
-Type=simple
-User=<your-username>
-WorkingDirectory=/path/to/repo
-ExecStart=/path/to/uv run runner.py
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Then manage it with:
 ```bash
-sudo systemctl restart subway-eink.service
-sudo systemctl stop subway-eink.service
+sudo bash scripts/install_service.sh
+sudo systemctl restart subway-display.service
 ```
 
 # Project Structure

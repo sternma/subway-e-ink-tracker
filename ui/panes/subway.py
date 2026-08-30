@@ -5,6 +5,7 @@ from typing import List, Optional
 import math
 
 from config.config import config
+from ui import palette
 from ui.fonts import fonts
 from services.subway_service import TrainArrival
 from ui.panes.base import Pane, PaneSurface, RenderContext
@@ -143,7 +144,11 @@ class SubwayPane(Pane):
         ampm_width = small_font.getlength(ampm_str)
 
         # Calculate total width and right-align the entire block
-        total_width = minutes_width + 5 + min_width + 40 + hour_width + 5 + ampm_width
+        gap = self.subway.MIN_LABEL_SPACING
+        total_width = (
+            minutes_width + gap + min_width + self.subway.MIN_LABEL_GAP
+            + hour_width + gap + ampm_width
+        )
         start_x = x + max_width - total_width
 
         # Draw minutes until arrival
@@ -151,26 +156,26 @@ class SubwayPane(Pane):
             (start_x, y),
             str(display_minutes),
             font=time_font,
-            fill=0,
+            fill=palette.INK,
             anchor="ls"
         )
 
         # Draw "min"
         surface.text(
-            (start_x + minutes_width + 5, y),
+            (start_x + minutes_width + gap, y),
             min_text,
             font=small_font,
-            fill=0,
+            fill=palette.MUTED,
             anchor="ls"
         )
 
         # Draw arrival time
-        time_x = start_x + minutes_width + min_width + 20
+        time_x = start_x + minutes_width + min_width + self.subway.CLOCK_GAP
         surface.text(
             (time_x, y),
             hour_str,
             font=time_font,
-            fill=0,
+            fill=palette.INK,
             anchor="ls"
         )
 
@@ -179,22 +184,22 @@ class SubwayPane(Pane):
             (time_x + hour_width, y),
             ampm_str,
             font=small_font,
-            fill=0,
+            fill=palette.MUTED,
             anchor="ls"
         )
 
     def _draw_train_line_logo(self, surface: PaneSurface, line_letter: str,
                              x: int, y: int, radius: int):
-        """Draw a subway train line logo"""
+        """Draw a subway train line bullet in its official MTA route color."""
         surface.ellipse(
             (x - radius, y - radius, x + radius, y + radius),
-            fill=0  # Black circle
+            fill=palette.line_color(line_letter)
         )
         surface.text(
             (x, y),
             line_letter,
             font=fonts.get('xheader'),
-            fill=255,  # White text
+            fill=palette.line_text_color(line_letter),
             anchor="mm"
         )
 
@@ -230,7 +235,7 @@ class SubwayPane(Pane):
         message = self._no_trains_message(self._minutes_to_next_train(trains, now))
         center_x = self.display.MAIN_SECTION_WIDTH // 2
         baseline_y = self.display.TRAIN_SECTION_Y + self.display.TRAIN_SECTION_HEIGHT - 30
-        surface.text((center_x, baseline_y), message, font=fonts.get('medium'), fill=0, anchor="ms")
+        surface.text((center_x, baseline_y), message, font=fonts.get('medium'), fill=palette.MUTED, anchor="ms")
 
     def _draw_service_unavailable_message(self, surface: PaneSurface):
         """Draw message when the train feeds could not be reached.
@@ -242,17 +247,17 @@ class SubwayPane(Pane):
             (self.subway.PADDING_X, self.subway.NEXT_TRAIN_Y),
             "Service",
             font=fonts.get('large'),
-            fill=0
+            fill=palette.INK
         )
         surface.text(
             (self.subway.PADDING_X, self.subway.NEXT_TRAIN_Y + 40),
             "unavailable",
             font=fonts.get('large'),
-            fill=0
+            fill=palette.INK
         )
         surface.text(
             (self.subway.PADDING_X, self.subway.LIST_Y),
             "Train data feed unreachable",
             font=fonts.get('medium'),
-            fill=0
+            fill=palette.MUTED
         )

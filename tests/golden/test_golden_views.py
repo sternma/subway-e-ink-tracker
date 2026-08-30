@@ -30,21 +30,15 @@ from tests.golden.fixtures import FIXED_NOW
 from tests.golden.scenarios import all_scenarios, Scenario
 
 GOLDEN_DIR = Path(__file__).parent / "golden_views"
-REFERENCE_PLATFORM = "darwin"
+REFERENCE_PLATFORM = "linux"
 RUN_PLATFORM_GOLDENS = os.environ.get("RUN_PLATFORM_GOLDENS") == "1"
 
 
 def render_scenario(scenario: Scenario) -> Image.Image:
-    """Render a scenario to the upright image a viewer/e-ink panel would show.
-
-    `getImage` rotates 180° for the panel's physical orientation, and the
-    display layer rotates again before showing it. We reproduce that second
-    rotation here so goldens are right-side-up and natural to review.
-    """
+    """Render a scenario in natural orientation for golden comparison."""
     weather, trains, bikes = scenario[1], scenario[2], scenario[3]
     render_kwargs = scenario[4] if len(scenario) > 4 else {}
-    img = getImage(weather, trains, bikes, now=FIXED_NOW, **render_kwargs)
-    return img.rotate(180)
+    return getImage(weather, trains, bikes, now=FIXED_NOW, **render_kwargs)
 
 
 def write_golden(scenario: Scenario) -> Path:

@@ -1,135 +1,63 @@
-import builtins
+import io
+import struct
 
-import pytest
-
-from ui.touch_input import TouchEdgeDetector, _run_touch_poll_loop, start_touch_listener
-
-
-class FakeChannel:
-    def __init__(self):
-        self.value = False
-
-
-class FakeSensor:
-    def __init__(self):
-        self.channels = [FakeChannel()]
-
-    def __getitem__(self, index):
-        return self.channels[index]
+from ui.key_input import Debouncer
+from ui.touch_input import (
+    BTN_TOUCH,
+    EVENT_SIZE,
+    EV_KEY,
+    _EVENT_FORMAT,
+    find_touch_device,
+    iter_taps,
+    start_touch_listener,
+)
 
 
-class FakeClock:
-    def __init__(self):
-        self.now = 10.0
-
-    def __call__(self):
-        return self.now
-
-    def advance(self, seconds):
-        self.now += seconds
+def _event(ev_type: int, code: int, value: int) -> bytes:
+    return struct.pack(_EVENT_FORMAT, 0, 0, ev_type, code, value)
 
 
-def test_touch_detector_fires_on_rising_edge_only():
-    sensor = FakeSensor()
-    clock = FakeClock()
-    calls = []
-    detector = TouchEdgeDetector(
-        sensor,
-        channel=0,
-        on_touch=lambda: calls.append("touch"),
-        debounce_seconds=0.35,
-        clock=clock,
+def test_iter_taps_fires_on_btn_touch_press_only():
+    stream = io.BytesIO(
+        _event(EV_KEY, BTN_TOUCH, 1)
+        + _event(EV_KEY, BTN_TOUCH, 1)
+        + _event(EV_KEY, BTN_TOUCH, 0)
+        + _event(3, 0x35, 100)
     )
-
-    detector.poll_once()
-    sensor.channels[0].value = True
-    detector.poll_once()
-    detector.poll_once()
-    clock.advance(1.0)
-    detector.poll_once()
-
-    assert calls == ["touch"]
+    taps = list(iter_taps(stream, Debouncer(0.35), clock=lambda: 10.0))
+    assert len(taps) == 1
 
 
-def test_touch_detector_release_and_touch_again_advances_again():
-    sensor = FakeSensor()
-    clock = FakeClock()
-    calls = []
-    detector = TouchEdgeDetector(
-        sensor,
-        channel=0,
-        on_touch=lambda: calls.append("touch"),
-        debounce_seconds=0.35,
-        clock=clock,
-    )
+def test_iter_taps_debounces_fast_retouch():
+    now = [10.0]
 
-    sensor.channels[0].value = True
-    detector.poll_once()
-    sensor.channels[0].value = False
-    clock.advance(0.5)
-    detector.poll_once()
-    sensor.channels[0].value = True
-    detector.poll_once()
+    def clock():
+        return now[0]
 
-    assert calls == ["touch", "touch"]
+    stream = io.BytesIO(_event(EV_KEY, BTN_TOUCH, 1) + _event(EV_KEY, BTN_TOUCH, 1))
+    taps = []
+    for _ in iter_taps(stream, Debouncer(0.35), clock=clock):
+        taps.append("tap")
+        now[0] += 0.1
+    assert taps == ["tap"]
 
 
-def test_touch_detector_debounces_fast_retouch():
-    sensor = FakeSensor()
-    clock = FakeClock()
-    calls = []
-    detector = TouchEdgeDetector(
-        sensor,
-        channel=0,
-        on_touch=lambda: calls.append("touch"),
-        debounce_seconds=0.35,
-        clock=clock,
-    )
-
-    sensor.channels[0].value = True
-    detector.poll_once()
-    sensor.channels[0].value = False
-    clock.advance(0.1)
-    detector.poll_once()
-    sensor.channels[0].value = True
-    detector.poll_once()
-
-    assert calls == ["touch"]
-
-
-def test_start_touch_listener_missing_library_does_not_crash(monkeypatch):
-    original_import = builtins.__import__
-
-    def fake_import(name, *args, **kwargs):
-        if name == "board":
-            raise ImportError("no board module")
-        return original_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", fake_import)
-
+def test_start_touch_listener_missing_device_does_not_crash(monkeypatch):
+    monkeypatch.setattr("ui.touch_input.find_touch_device", lambda: None)
     assert not start_touch_listener(lambda: None)
 
 
-def test_touch_poll_loop_continues_after_poll_error():
-    class StopLoop(Exception):
-        pass
+def test_find_touch_device_picks_btn_touch_node(tmp_path, monkeypatch):
+    event = tmp_path / "event5"
+    event.write_bytes(b"")
+    sysfs = tmp_path / "sys"
+    key = sysfs / "event5" / "device" / "capabilities" / "key"
+    key.parent.mkdir(parents=True)
+    # BTN_TOUCH is bit 0x14A = 330. Word 5 (bits 320-383) has bit 10 set = 0x400.
+    key.write_text("400 0 0 0 0 0\n")
+    (sysfs / "event5" / "device" / "name").write_text("11-0041 ili_v3\n")
 
-    class FlakyDetector:
-        def __init__(self):
-            self.calls = 0
-
-        def poll_once(self):
-            self.calls += 1
-            if self.calls == 1:
-                raise OSError("i2c glitch")
-
-    detector = FlakyDetector()
-
-    def sleep(_seconds):
-        if detector.calls >= 2:
-            raise StopLoop
-
-    with pytest.raises(StopLoop):
-        _run_touch_poll_loop(detector, poll_interval_seconds=0, sleep=sleep)
-
-    assert detector.calls == 2
+    monkeypatch.setattr("ui.touch_input._DEVICE_ROOT", sysfs)
+    monkeypatch.setattr("ui.touch_input.glob.glob", lambda _pat: [str(event)])
+    assert find_touch_device() == str(event)
+    assert EVENT_SIZE == 24

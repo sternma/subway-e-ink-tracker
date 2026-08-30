@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+from ui import palette
 from ui.fonts import fonts
 from ui.panes.base import Pane, PaneSurface, RenderContext
 
@@ -34,9 +35,9 @@ class DatePane(Pane):
         surface.line(
             (self.display.WIDTH // 2, line_start_y,
              self.display.WIDTH // 2, line_end_y),
-            fill=0,
-            width=5
+            fill=palette.RULE,
+            width=4
         )
 
-        surface.text((date_x, self.time.Y), date_str, font=font, fill=0)
-        surface.text((time_x, self.time.Y), time_str, font=font, fill=0)
+        surface.text((date_x, self.time.Y), date_str, font=font, fill=palette.INK)
+        surface.text((time_x, self.time.Y), time_str, font=font, fill=palette.INK)

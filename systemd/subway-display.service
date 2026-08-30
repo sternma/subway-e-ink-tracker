@@ -1,0 +1,17 @@
+[Unit]
+Description=Subway transit display
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/subway-e-ink-tracker
+Environment=PATH=/home/pi/.local/bin:/usr/bin
+ExecStart=/home/pi/.local/bin/uv run runner.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

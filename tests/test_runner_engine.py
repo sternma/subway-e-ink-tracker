@@ -157,24 +157,7 @@ def test_runner_prewarms_remaining_screens_after_current_render():
     runner._check_display_update()
 
     assert len(disp.prewarm_calls) == 1
-    assert disp.prewarm_calls[0]["screen_names"] == [
-        "bird-collage-named",
-        "birds",
-        "bird-profile",
-    ]
-
-
-def test_runner_prewarm_skips_transit_after_bird_profile_render():
-    runner, disp, _ = _ready_prewarming_runner()
-    screen_manager.select(3)  # bird-profile
-
-    runner._check_display_update()
-
-    assert len(disp.prewarm_calls) == 1
-    assert disp.prewarm_calls[0]["screen_names"] == [
-        "bird-collage-named",
-        "birds",
-    ]
+    assert disp.prewarm_calls[0]["screen_names"] == []
 
 
 def test_runner_starts_touch_listener_when_enabled(monkeypatch):
@@ -182,15 +165,14 @@ def test_runner_starts_touch_listener_when_enabled(monkeypatch):
     touch_calls = []
 
     monkeypatch.setattr("runner.config.TOUCH_ENABLED", True)
-    monkeypatch.setattr("runner.config.TOUCH_CHANNEL", 0)
-    monkeypatch.setattr("runner.config.TOUCH_I2C_ADDRESS", 0x5A)
+    monkeypatch.setattr("runner.config.TOUCH_DEVICE", None)
     monkeypatch.setattr("runner.start_spacebar_listener", lambda _callback: False)
+    monkeypatch.setattr("runner.backlight.discover", lambda: object())
 
-    def fake_touch(callback, *, channel, address):
+    def fake_touch(callback, *, device_path=None):
         touch_calls.append({
             "callback": callback,
-            "channel": channel,
-            "address": address,
+            "device_path": device_path,
         })
         return True
 
@@ -199,9 +181,8 @@ def test_runner_starts_touch_listener_when_enabled(monkeypatch):
     runner._start_input_listeners()
 
     assert touch_calls == [{
-        "callback": runner._advance_screen,
-        "channel": 0,
-        "address": 0x5A,
+        "callback": runner._toggle_backlight,
+        "device_path": None,
     }]
 
 
@@ -252,93 +233,8 @@ def test_bike_update_alone_does_not_unblock_transit_but_is_kept():
     assert disp.calls[0]["app_data"].bikes == bikes
 
 
-def test_spacebar_advance_renders_named_bird_collage_without_transit_data():
-    disp = RecordingDisplay()
-    runner = Runner(
-        display=disp,
-        clock=FakeClock(),
-        data_hub=DataHub(initial_data=AppData(birds=_bird_result())),
-    )
-    runner._advance_screen()
-    assert disp.calls == [{
-        "app_data": AppData(birds=_bird_result()),
-        "partial": False,
-        "clear": False,
-        "intent": DisplayIntent.SCREEN_TRANSITION,
-        "now": runner.clock.now(),
-        "screen_name": "bird-collage-named",
-    }]
-
-
-def test_spacebar_advance_renders_named_bird_collage_before_bird_data_exists():
-    disp = RecordingDisplay()
-    runner = Runner(
-        display=disp,
-        clock=FakeClock(),
-        data_hub=DataHub(initial_data=AppData()),
-    )
-
-    runner._advance_screen()
-
-    assert disp.calls == [{
-        "app_data": AppData(),
-        "partial": False,
-        "clear": False,
-        "intent": DisplayIntent.SCREEN_TRANSITION,
-        "now": runner.clock.now(),
-        "screen_name": "bird-collage-named",
-    }]
-
-
-def test_spacebar_advance_cycles_through_all_screens():
+def test_advance_is_noop_with_single_registered_screen():
     runner, disp, _ = _ready_runner()
-
-    for _ in range(screen_manager.count()):
-        runner._advance_screen()
-
-    assert [call["screen_name"] for call in disp.calls] == [
-        "bird-collage-named",
-        "birds",
-        "bird-profile",
-        "transit",
-    ]
-    assert all(call["intent"] == DisplayIntent.SCREEN_TRANSITION for call in disp.calls)
-
-
-def test_named_bird_collage_data_redraw_uses_full_refresh():
-    runner, disp, clock = _ready_runner()
-    screen_manager.select(1)  # bird-collage-named
-
-    runner._check_display_update()
-    clock.advance(2)
-    runner.data_hub.handle_bird_update(BirdResult(
-        observations=[
-            BirdObservation(
-                sci_name="Poecile atricapillus",
-                common_name="Black-capped Chickadee",
-                count=5,
-                last_seen="2026-06-11 22:41:10",
-                max_confidence=0.91,
-            )
-        ],
-        window_hours=24,
-    ))
-
-    assert disp.calls[0]["screen_name"] == "bird-collage-named"
-    assert disp.calls[1]["screen_name"] == "bird-collage-named"
-    assert disp.calls[1]["clear"] is True
-    assert disp.calls[1]["partial"] is False
-    assert disp.calls[1]["intent"] == DisplayIntent.MAINTENANCE_CLEAR
-
-
-def test_bird_list_screen_does_not_redraw_each_tick_when_data_unchanged():
-    screen_manager.select(2)
-    clock = FakeClock()
-    disp = RecordingDisplay()
-    runner = Runner(display=disp, clock=clock, data_hub=DataHub(initial_data=AppData(birds=_bird_result())))
-
-    runner._check_display_update()
-    clock.advance(2)
-    runner._check_display_update()
-
-    assert len(disp.calls) == 1
+    runner._advance_screen()
+    assert disp.calls == []
+    assert screen_manager.current_name() == "transit"

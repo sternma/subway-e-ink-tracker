@@ -1,9 +1,9 @@
-# Display Updates: Behavior, Findings, and Research Directions
+# Display Updates: Historical e-ink notes
 
-A reference for improving e-ink render quality — **clarity** (no smudging/ghosting),
-**latency**, and **precision** (crisp lines/text). It records how the panel is driven
-today, what investigation has established, and the open directions worth exploring.
-No direction is chosen here; this is a map, not a decision.
+This document describes the Waveshare IT8951 825×1200 e-ink pipeline this project
+started on. The current fork drives a Raspberry Pi Touch Display 2 10-inch
+(1200×1920 DSI LCD) via `/dev/fb0`. Waveforms, partial bbox updates, and ghosting
+research below are historical.
 
 ## Current behavior
 

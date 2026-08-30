@@ -12,9 +12,10 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env'), ov
 
 @dataclass
 class DisplayConfig:
-    WIDTH: int = 825
-    HEIGHT: int = 1200
-    
+    """Screen geometry for the Raspberry Pi Touch Display 2 10-inch (1200x1920 portrait)."""
+    WIDTH: int = 1200
+    HEIGHT: int = 1920
+
     def __post_init__(self):
         self.HEADER_HEIGHT = self.HEIGHT // 9 # 1/8th of the height
         self.TRAIN_SECTION_HEIGHT =  (self.HEIGHT * 2) // 3 # ((self.HEIGHT - self.HEADER_HEIGHT) * 2) // 4  # Half the height 
@@ -25,7 +26,7 @@ class DisplayConfig:
         self.MAIN_SECTION_WIDTH = self.WIDTH - self.VERTICAL_LANE_WIDTH
         
         # Central column position for train and weather icons
-        self.ICON_COLUMN_X = 100 # self.MAIN_SECTION_WIDTH // 6
+        self.ICON_COLUMN_X = 140 # self.MAIN_SECTION_WIDTH // 6
         
         self.HEADER_Y = 0
         self.TRAIN_SECTION_Y = self.HEADER_HEIGHT
@@ -40,9 +41,12 @@ class DisplayConfig:
 class WeatherConfig:
     def __init__(self, display: DisplayConfig):
         # Adjust main icon sizes for new layout
-        self.MAIN_ICON_SIZE = 165
-        self.SMALL_ICON_SIZE = 80 # round(display.WEATHER_SECTION_HEIGHT / 4)
-        self.VERTICAL_ICON_SIZE = 165  # New size for vertical lane
+        self.MAIN_ICON_SIZE = 220
+        self.SMALL_ICON_SIZE = 110 # round(display.WEATHER_SECTION_HEIGHT / 4)
+        self.VERTICAL_ICON_SIZE = 220  # New size for vertical lane
+        # Clearance between an hourly row's icon edge and its time/temp text.
+        # Offsets derive from icon_size so the lane survives a resolution change.
+        self.VERTICAL_TEXT_GAP = 6
 
         self.CURRENT_X = 20
         self.CURRENT_Y = display.WEATHER_SECTION_Y + 20
@@ -61,14 +65,14 @@ class WeatherConfig:
         self.BOTTOM_SECTION_Y = display.WEATHER_SECTION_Y + 20
         self.BIKE_SECTION_X = 20
         self.BIKE_SECTION_WIDTH = display.BOTTOM_VERTICAL_OFFSET - self.BIKE_SECTION_X - 20
-        self.BIKE_ICON_SIZE = 100
-        self.EBIKE_ICON_SIZE = 80
-        self.BIKE_TEXT_X = self.BIKE_SECTION_X + self.BIKE_ICON_SIZE + 45
+        self.BIKE_ICON_SIZE = 140
+        self.EBIKE_ICON_SIZE = 110
+        self.BIKE_TEXT_X = self.BIKE_SECTION_X + self.BIKE_ICON_SIZE + 50
         self.BIKE_ROW_COUNT = 2
         self.CURRENT_SECTION_X = display.BOTTOM_VERTICAL_OFFSET
         self.CURRENT_SECTION_WIDTH = display.WIDTH - self.CURRENT_SECTION_X - 20
         self.CURRENT_SECTION_TOP = self.BOTTOM_SECTION_Y
-        self.CURRENT_ICON_SIZE = 220
+        self.CURRENT_ICON_SIZE = 300
 
 @dataclass
 class SubwayConfig:
@@ -84,21 +88,25 @@ class SubwayConfig:
         self.G_TRAIN_Y = self.SECTION_Y + (self.SECTION_HEIGHT // 2) + (self.SECTION_HEIGHT // 4)
         
         # Train logo and text layout
-        self.LOGO_RADIUS = 80
+        self.LOGO_RADIUS = 110
         self.LOGO_CENTER_X = display.MAIN_SECTION_WIDTH // 4
-        self.TEXT_MARGIN = 40
-        self.TEXT_PADDING = 100
+        self.TEXT_MARGIN = 50
+        self.TEXT_PADDING = 130
         self.TEXT_START_X = display.ICON_COLUMN_X + self.LOGO_RADIUS + self.TEXT_PADDING
-        self.LINE_HEIGHT = 60
-        self.LINE_SPACING = 12
+        self.LINE_HEIGHT = 80
+        self.LINE_SPACING = 16
+        # Gaps within an arrival row: "<minutes> min   <clock><am/pm>".
+        self.MIN_LABEL_GAP = 48
+        self.CLOCK_GAP = 32
+        self.MIN_LABEL_SPACING = 8
         self.TEXT_BASE_OFFSETS = {
-            1: 85,
-            2: 50,
-            3: 10,
-            4: -30,
-            5: -65
+            1: 120,
+            2: 70,
+            3: 14,
+            4: -42,
+            5: -90
         }
-        self.TEXT_BASE_DEFAULT_OFFSET = -70
+        self.TEXT_BASE_DEFAULT_OFFSET = -96
         
         # Train filtering limits
         self.MIN_TRAIN_MINUTES = 1
@@ -148,9 +156,24 @@ class Config:
         self.BIRD_ASSET_DIR = os.getenv('BIRD_ASSET_DIR', 'assets/birds/illustrations')
         self.BIRD_MOCK_DATA = os.getenv('BIRD_MOCK_DATA', 'assets/birds/mock_detections.json')
         self.BIRD_USE_MOCK_DATA = os.getenv('BIRD_USE_MOCK_DATA', 'false').lower() == 'true'
-        self.TOUCH_ENABLED = os.getenv('TOUCH_ENABLED', 'false').lower() == 'true'
-        self.TOUCH_CHANNEL = int(os.getenv('TOUCH_CHANNEL', '0'))
-        self.TOUCH_I2C_ADDRESS = int(os.getenv('TOUCH_I2C_ADDRESS', '0x5a'), 0)
+
+        # Panel output. Rotation is applied at the display layer, not at render
+        # time, so debug PNGs and golden images stay in natural orientation.
+        self.DISPLAY_DEVICE = os.getenv('DISPLAY_DEVICE', '/dev/fb0')
+        self.DISPLAY_ROTATION = int(os.getenv('DISPLAY_ROTATION', '0'))
+        if self.DISPLAY_ROTATION not in (0, 90, 180, 270):
+            raise ValueError(
+                f"DISPLAY_ROTATION must be 0, 90, 180 or 270 (got {self.DISPLAY_ROTATION})"
+            )
+
+        # Backlight. Tapping the touchscreen toggles the panel on and off.
+        self.BACKLIGHT_BRIGHTNESS = int(os.getenv('BACKLIGHT_BRIGHTNESS', '100'))
+        self.BACKLIGHT_NIGHT_BRIGHTNESS = int(os.getenv('BACKLIGHT_NIGHT_BRIGHTNESS', '25'))
+        self.BACKLIGHT_NIGHT_START = os.getenv('BACKLIGHT_NIGHT_START', '')
+        self.BACKLIGHT_NIGHT_END = os.getenv('BACKLIGHT_NIGHT_END', '')
+
+        self.TOUCH_ENABLED = os.getenv('TOUCH_ENABLED', 'true').lower() == 'true'
+        self.TOUCH_DEVICE = os.getenv('TOUCH_DEVICE', '') or None
 
         if not self.STATION_ID:
             raise ValueError("STATION_ID must be set in .env file")
@@ -170,15 +193,15 @@ class Config:
         self.timing = TimingConfig()
         self.timing.apply_env()
         
-        # Font sizes
+        # Font sizes, scaled for the 1200px-wide 10-inch panel
         self.FONT_SIZES = {
-            'small': 18,
-            'medium': 24,
-            'large': 30,
-            'xlarge': 36,
-            'xxlarge': 42,
-            'header': 60,
-            'xheader': 72,
+            'small': 24,
+            'medium': 32,
+            'large': 40,
+            'xlarge': 48,
+            'xxlarge': 56,
+            'header': 80,
+            'xheader': 96,
         }
 
         self.time = TimeConfig(self.display, self.FONT_SIZES)

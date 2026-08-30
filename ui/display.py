@@ -1,13 +1,11 @@
 import logging
 import csv
 import os
-import sys
-from time import sleep
 import traceback
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from PIL import Image, ImageChops
+from PIL import Image
 from pathlib import Path
 from typing import Optional
 import threading
@@ -15,18 +13,13 @@ import time
 
 from data.models import AppData
 from ui.layout import getImageFromAppData
+from ui.lcd_display import DisplayUnavailableError, LcdDisplay
 from ui.render_cache import RenderCache
 from ui.time_format import displayed_clock
 from config.config import config
 
 logger = logging.getLogger(__name__)
 render_cache = RenderCache()
-
-# Only import IT8951 on Raspberry Pi
-IS_RASPBERRY_PI = sys.platform == 'linux'
-if IS_RASPBERRY_PI:
-    from IT8951.display import AutoEPDDisplay # type: ignore
-    from IT8951 import constants # type: ignore
 
 
 class DisplayIntent(Enum):
@@ -122,7 +115,6 @@ class DebugDisplay:
     def _update_display(self, img: Image.Image, metadata: DisplayFrame | None = None):
         """Save the image without automatically opening it"""
         try:
-            img = img.rotate(180)
             img.save(self.current_image_path)
             logger.info(f"Saved display image to {self.current_image_path}")
             if self.history_enabled:
@@ -222,153 +214,6 @@ class DebugDisplay:
             counter += 1
         return candidate
 
-class EInkDisplay:
-    def __init__(self):
-        if IS_RASPBERRY_PI:
-            self.display = AutoEPDDisplay(vcom=-2.06, rotate='CCW', spi_hz=12000000)
-            logger.info(f"VCOM set to {self.display.epd.get_vcom()}")
-        else:
-            raise RuntimeError("EInkDisplay can only be used on Raspberry Pi")
-        
-        self.previous_image = None
-    
-    def initialize(self):
-        """Initialize the e-ink display"""
-        pass
-
-    def _clear_display(self):
-        """Clear the e-ink display"""
-        try:
-            logger.info("Clearing display")
-            self.display.frame_buf.paste(0xFF, box=(0, 0, config.display.WIDTH, config.display.HEIGHT))
-            self.display.draw_full(constants.DisplayModes.GC16)
-            logger.info("Display cleared")
-            
-        except Exception as e:
-            logger.error(f"Error clearing display: {str(e)}")
-            raise
-
-    def restart(self):
-        logger.error("Likely Error: Restarting display")
-
-        self.display.epd.sleep()
-        sleep(2)
-        self.display = AutoEPDDisplay(vcom=-2.06, rotate='CCW', spi_hz=12000000)
-        sleep(2)
-        logger.error("Display restarted")
-    
-    def _update_display(
-        self,
-        img: Image.Image,
-        clear: bool = False,
-        intent: DisplayIntent = DisplayIntent.NORMAL,
-    ):
-        """Update the e-ink display using IT8951"""
-        try:
-            if intent in {DisplayIntent.SCREEN_TRANSITION, DisplayIntent.MAINTENANCE_CLEAR} or clear:
-                waveform = constants.DisplayModes.GLR16
-            else:
-                waveform = constants.DisplayModes.DU
-
-            start = time.monotonic()
-            logger.info("Sending image to display (waveform=%s, intent=%s)", waveform, intent.value)
-            self.display.frame_buf.paste(img)
-            self.display.draw_full(waveform)
-            duration = time.monotonic() - start
-            logger.info(
-                "Display update complete (duration=%.3fs, waveform=%s, intent=%s)",
-                duration,
-                waveform,
-                intent.value,
-            )
-            
-        except Exception as e:
-            print(f"Error updating display: {str(e)}")
-            self.display.epd.wait_display_ready()
-            logger.error(f"Error updating display: {str(e)}")
-            raise
-
-    def _update_partial_display(self, img: Image.Image, box: tuple):
-        """Update a portion of the e-ink display using IT8951"""
-        try:
-            start = time.monotonic()
-            logger.info("Sending partial image to display (box=%s)", box)
-            self.display.frame_buf.paste(img.crop(box), box)
-            self.display.draw_partial(constants.DisplayModes.DU) # .DU is faster but has ghosting
-            duration = time.monotonic() - start
-            logger.info("Partial display update complete (duration=%.3fs, box=%s)", duration, box)
-            
-        except Exception as e:
-            print(f"Error updating partial display: {str(e)}")
-            self.display.epd.wait_display_ready()
-            # self.restart()
-
-            logger.error(f"Error updating partial display: {str(e)}")
-            raise
-
-    def _get_diff_box(self, img1: Image.Image, img2: Image.Image) -> tuple:
-        """Get bounding box of differences between two images"""
-        diff = ImageChops.difference(img1, img2)
-        return diff.getbbox()
-
-    def update(
-        self,
-        img: Image.Image,
-        partial: bool = False,
-        clear: bool = False,
-        metadata: DisplayFrame | None = None,
-    ):
-        """Update the e-ink display with new data
-        ToDo: I'm hiding logic here that only does a partial refresh on small changes rather than plumbing all the way through.
-        """
-        try:
-            if metadata is not None:
-                logger.info(
-                    "Consuming display frame sequence=%s screen=%s clock=%s intent=%s queue_wait=%.3fs overwritten=%s partial=%s clear=%s",
-                    metadata.sequence,
-                    metadata.screen_name,
-                    metadata.displayed_clock,
-                    metadata.intent.value,
-                    time.time() - metadata.queued_at,
-                    metadata.overwritten_before_consume,
-                    partial,
-                    clear,
-                )
-            intent = metadata.intent if metadata else DisplayIntent.MAINTENANCE_CLEAR if clear else DisplayIntent.NORMAL
-            if intent in {DisplayIntent.SCREEN_TRANSITION, DisplayIntent.MAINTENANCE_CLEAR}:
-                self._update_display(img, clear, intent)
-                self.previous_image = img
-                return
-
-            if self.previous_image:
-                diff_box = self._get_diff_box(self.previous_image, img)
-            else:
-                diff_box = None
-
-            # Nothing changed since the last frame (and not an explicit clear):
-            # skip the repaint, so a static screen doesn't full-refresh every tick.
-            # (Checked before the large-diff escalation below, which also nulls diff_box.)
-            if self.previous_image and diff_box is None and not clear:
-                logger.info("Skipping e-ink update; frame is identical to previous image")
-                return
-
-            # Fix - maybe have the partial boolean parameter be tuple of max width/height"
-            if diff_box and (diff_box[2] - diff_box[0] > 50 or diff_box[3] - diff_box[1] > 50):
-                logger.info("Large diff detected, doing full update")
-                diff_box = None
-
-            if partial and diff_box:
-                self._update_partial_display(img, diff_box)
-            else:
-                self._update_display(img, clear, intent)
-            
-            self.previous_image = img
-                
-        except Exception as e:
-            logger.error(f"Error updating display: {str(e)}")
-            logger.error(traceback.format_exc())
-            raise
-
 class Display:
     def __init__(self):
         self.display = None
@@ -388,12 +233,18 @@ class Display:
         """Initialize the appropriate display based on config"""
         if config.DEBUG:
             self.display = DebugDisplay()
-        elif IS_RASPBERRY_PI:
-            self.display = EInkDisplay()
-            self.display._clear_display()
         else:
-            raise RuntimeError("Cannot initialize e-ink display on non-Raspberry Pi device when not in debug mode")
-        
+            try:
+                self.display = LcdDisplay(
+                    rotation=config.DISPLAY_ROTATION,
+                    device=config.DISPLAY_DEVICE,
+                )
+            except DisplayUnavailableError as exc:
+                raise RuntimeError(
+                    f"Cannot open the panel ({exc}). Set DEBUG=true to render to "
+                    "debug_output/ instead of a physical display."
+                ) from exc
+
         self.display.initialize()
 
     def _process_queue(self):

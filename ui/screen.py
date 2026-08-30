@@ -1,9 +1,12 @@
 """A screen: the ordered set of panes that fill the display.
 
-`Screen.render` builds the blank frame, renders each pane into it, optionally
-draws cross-pane chrome (e.g. section dividers) on top, and applies the 180°
-rotation for the panel's physical orientation. Chrome is per-screen: a
-full-screen image or collage with no dividers simply passes none.
+`Screen.render` builds the blank frame, renders each pane into it, and
+optionally draws cross-pane chrome (e.g. section dividers) on top. Chrome is
+per-screen: a full-screen image or collage with no dividers simply passes none.
+
+The frame comes out in natural orientation. Any rotation the physical panel
+needs is applied by the display layer, so debug PNGs and golden images are
+right-side-up without compensating for it here.
 """
 
 from dataclasses import dataclass
@@ -13,19 +16,13 @@ from PIL import Image, ImageDraw
 
 from config.config import config
 from data.models import DataKey
+from ui import palette
 from ui.panes import Pane, RenderContext
 
 
 @dataclass(frozen=True)
 class ScreenProfile:
-    """Display-adapter preferences for a screen.
-
-    The current adapter still maps the runner's partial/clear flags to the
-    panel modes. Keeping the profile on Screen now gives the engine a stable
-    place to read waveform/binarization preferences in the next pass.
-    """
-    waveform: str = "DU"
-    binarize: bool = False
+    """Display-adapter preferences for a screen."""
     full_refresh_on_redraw: bool = False
 
 
@@ -56,7 +53,7 @@ class Screen:
 
     def render(self, ctx: RenderContext) -> Image.Image:
         d = config.display
-        img = Image.new('L', (d.WIDTH, d.HEIGHT), 255)
+        img = Image.new('RGB', (d.WIDTH, d.HEIGHT), palette.PAPER)
         draw = ImageDraw.Draw(img)
 
         # Panes first, then chrome on top — panes paste opaque tiles, so chrome
@@ -66,4 +63,4 @@ class Screen:
         if self.chrome is not None:
             self.chrome(draw)
 
-        return img.rotate(180)
+        return img

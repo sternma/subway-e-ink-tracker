@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import List
 
+from ui import palette
 from ui.fonts import fonts
 import utils
 from services.weather_service import build_next_hours_forecast
@@ -30,6 +31,10 @@ class HourlyWeatherPane(Pane):
         available_height = max(1, self.weather.BOTTOM_SECTION_Y - y - 30)
         hour_height = available_height / max(1, len(hourly_data))
 
+        # Text sits just outside the icon, so both offsets derive from the icon
+        # size rather than a fixed inset that only worked at one resolution.
+        text_offset = icon_size // 2 + self.weather.VERTICAL_TEXT_GAP
+
         for i, hour in enumerate(hourly_data[:12]):
             hour_y = int(y + i * hour_height)
             chance_of_precipitation = hour.get('chance_of_precipitation')
@@ -45,10 +50,10 @@ class HourlyWeatherPane(Pane):
             # Draw time
             hour_time = datetime.fromisoformat(hour['time'].replace('Z', '+00:00')).strftime('%I%p').lstrip('0').lower()
             surface.text(
-                (center_x - icon_size + 35, hour_y + int(hour_height // 2)),
+                (center_x - text_offset, hour_y + int(hour_height // 2)),
                 hour_time,
                 font=fonts.get('large'),
-                fill=0,
+                fill=palette.MUTED,
                 anchor="rm"
             )
 
@@ -58,15 +63,22 @@ class HourlyWeatherPane(Pane):
             surface.paste(icon, (icon_x, hour_y + int((hour_height - icon_size) // 2)), icon)
 
             # Draw temperature and precipitation chance
-            temp = str(round(float(hour['temp_f'])))
-            temp_pos = (center_x + icon_size - 35, hour_y + int(hour_height // 2))
-            surface.text(temp_pos, f"{temp}°", font=fonts.get('large'), fill=0, anchor="lm")
+            temp_value = float(hour['temp_f'])
+            temp = str(round(temp_value))
+            temp_pos = (center_x + text_offset, hour_y + int(hour_height // 2))
+            surface.text(
+                temp_pos,
+                f"{temp}°",
+                font=fonts.get('large'),
+                fill=palette.temperature_color(temp_value),
+                anchor="lm",
+            )
 
             if precip_chance >= 15:
                 surface.text(
-                    (temp_pos[0], temp_pos[1] + 26),
+                    (temp_pos[0], temp_pos[1] + 24),
                     f"{int(precip_chance)}%",
                     font=fonts.get('medium'),
-                    fill=0,
+                    fill=palette.PRECIP,
                     anchor="lm"
                 )

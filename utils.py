@@ -13,7 +13,21 @@ ICON_ROOT = BASE_DIR / 'assets' / 'icons'
 WEATHER_ICON_DIR = ICON_ROOT / 'weather'
 UI_ICON_DIR = ICON_ROOT / 'ui'
 
-def _render_svg(icon_path: Path, size: int) -> Image.Image:
+def _tint(icon: Image.Image, color: tuple[int, int, int]) -> Image.Image:
+    """Recolor monochrome line art by keeping its alpha and replacing the fill.
+
+    Every icon in assets/ is single-color line art with no gradients, so the
+    alpha channel is the whole shape; substituting a flat color under it is
+    lossless.
+    """
+    alpha = icon.convert("RGBA").getchannel("A")
+    tinted = Image.new("RGBA", icon.size, (*color, 255))
+    tinted.putalpha(alpha)
+    return tinted
+
+
+def _render_svg(icon_path: Path, size: int,
+                tint: tuple[int, int, int] | None = None) -> Image.Image:
     """Convert an SVG at icon_path to a Pillow Image of roughly size x size."""
     png_data = BytesIO()
     try:
@@ -26,22 +40,23 @@ def _render_svg(icon_path: Path, size: int) -> Image.Image:
             parent_height=size
         )
         png_data.seek(0)
-        return Image.open(png_data)
+        icon = Image.open(png_data)
+        return _tint(icon, tint) if tint is not None else icon
     except Exception as e:
         logger.error(f"Error creating icon from {icon_path}: {str(e)}")
         raise
 
-def getWeatherIcon(weatherReportJson, size):
+def getWeatherIcon(weatherReportJson, size, tint=None):
     """Convert SVG weather icon to PNG and return as PIL Image without saving to disk"""
     iconPath = getWeatherIconPath(weatherReportJson)
-    return _render_svg(iconPath, size)
+    return _render_svg(iconPath, size, tint)
 
-def get_ui_icon(icon_name: str, size: int) -> Image.Image:
+def get_ui_icon(icon_name: str, size: int, tint=None) -> Image.Image:
     """Render a non-weather UI icon (e.g., bike, bolt) from assets/icons/ui."""
     icon_path = UI_ICON_DIR / f"{icon_name}.svg"
     if not icon_path.exists():
         raise FileNotFoundError(f"UI icon '{icon_name}' not found at {icon_path}.")
-    return _render_svg(icon_path, size)
+    return _render_svg(icon_path, size, tint)
 
 # Takes a 1hr report or a "currentDay" report
 def getWeatherIconPath(weatherReportJson):

@@ -4,6 +4,7 @@ from datetime import datetime, time
 from typing import Optional
 
 import clock
+from ui import palette
 from ui.fonts import fonts
 import utils
 from services.weather_codes import RAIN_WMO_CODES, SNOW_WMO_CODES
@@ -141,10 +142,11 @@ class WeatherOverviewPane(Pane):
         unit_spacing = 6
 
         text_x = x + self.weather.CURRENT_ICON_SIZE + 40
-        temp_text = f"{round(current_weather.get('temp_f', 0))}°"
+        current_temp = current_weather.get('temp_f', 0)
+        temp_text = f"{round(current_temp)}°"
         condition_text = current_weather.get('condition', {}).get('text', '')
         cond_x = x + (self.weather.CURRENT_ICON_SIZE // 2)
-        surface.text((cond_x, y + self.weather.CURRENT_ICON_SIZE - 30), condition_text, font=detail_font, fill=0, anchor="mt")
+        surface.text((cond_x, y + self.weather.CURRENT_ICON_SIZE - 30), condition_text, font=detail_font, fill=palette.INK, anchor="mt")
 
         right_x = text_x + 150
         right_y = y
@@ -158,15 +160,17 @@ class WeatherOverviewPane(Pane):
             max_temp = day_summary.get('maxtemp_f')
             min_temp = day_summary.get('mintemp_f')
             if max_temp is not None:
-                surface.text((right_x, right_y - 5), "High", font=small_font, fill=0, anchor="ls")
+                surface.text((right_x, right_y - 5), "High", font=small_font, fill=palette.MUTED, anchor="ls")
                 right_y += small_font.size + 4
-                surface.text((right_x, right_y + 40), f"{round(max_temp)}°", font=temp_font, fill=0, anchor="ls")
+                surface.text((right_x, right_y + 40), f"{round(max_temp)}°", font=temp_font,
+                             fill=palette.temperature_color(max_temp), anchor="ls")
                 high_center = right_y + temp_font.size / 2
                 right_y += temp_font.size + 12
             if min_temp is not None:
-                surface.text((right_x, right_y - 5), "Low", font=small_font, fill=0, anchor="ls")
+                surface.text((right_x, right_y - 5), "Low", font=small_font, fill=palette.MUTED, anchor="ls")
                 right_y += small_font.size + 4
-                surface.text((right_x, right_y + 40), f"{round(min_temp)}°", font=temp_font, fill=0, anchor="ls")
+                surface.text((right_x, right_y + 40), f"{round(min_temp)}°", font=temp_font,
+                             fill=palette.temperature_color(min_temp), anchor="ls")
                 low_center = right_y + temp_font.size / 2
                 right_y += temp_font.size + 12
             summary_precip = day_summary.get('daily_chance_of_rain')
@@ -180,17 +184,17 @@ class WeatherOverviewPane(Pane):
 
         if daily_rain_value is not None:
             daily_rain_label_y = right_y - 16
-            surface.text((right_x, daily_rain_label_y), daily_rain_label_text, font=small_font, fill=0, anchor="ls")
+            surface.text((right_x, daily_rain_label_y), daily_rain_label_text, font=small_font, fill=palette.MUTED, anchor="ls")
             right_y += small_font.size + 4
             daily_rain_value_y = right_y - 5
             daily_rain_value_text = f"{int(daily_rain_value)}"
-            surface.text((right_x, daily_rain_value_y), daily_rain_value_text, font=fonts.get('large'), fill=0, anchor="ls")
+            surface.text((right_x, daily_rain_value_y), daily_rain_value_text, font=fonts.get('large'), fill=palette.PRECIP, anchor="ls")
             value_width = surface.textlength(daily_rain_value_text, font=fonts.get('large'))
             surface.text(
                 (right_x + value_width + unit_spacing, daily_rain_value_y),
                 "%",
                 font=unit_font,
-                fill=0,
+                fill=palette.PRECIP,
                 anchor="ls"
             )
 
@@ -203,7 +207,8 @@ class WeatherOverviewPane(Pane):
             target_center = y + self.weather.CURRENT_ICON_SIZE / 2
 
         temp_y = target_center - temp_font.size / 2 + 25
-        surface.text((text_x - 15, temp_y), temp_text, font=temp_font, fill=0, anchor="ls")
+        surface.text((text_x - 15, temp_y), temp_text, font=temp_font,
+                     fill=palette.temperature_color(current_temp), anchor="ls")
 
         left_y = temp_y + temp_font.size + 12
 
@@ -219,10 +224,11 @@ class WeatherOverviewPane(Pane):
 
         def draw_detail_block(label: str, value_text: str, label_y: float,
                               forced_value_y: float | None = None,
-                              unit_text: str = "") -> float:
+                              unit_text: str = "",
+                              value_color=palette.INK) -> float:
             value_y = forced_value_y if forced_value_y is not None else label_y + right_label_font.size + detail_value_gap
-            surface.text((detail_x, label_y), label, font=right_label_font, fill=0, anchor="ls")
-            surface.text((detail_x, value_y), value_text, font=large_font, fill=0, anchor="ls")
+            surface.text((detail_x, label_y), label, font=right_label_font, fill=palette.MUTED, anchor="ls")
+            surface.text((detail_x, value_y), value_text, font=large_font, fill=value_color, anchor="ls")
             cursor = value_y + large_font.size + detail_spacing
             if unit_text:
                 value_width = surface.textlength(value_text, font=large_font)
@@ -230,7 +236,7 @@ class WeatherOverviewPane(Pane):
                     (detail_x + value_width + unit_spacing, value_y),
                     unit_text,
                     font=unit_font,
-                    fill=0,
+                    fill=value_color,
                     anchor="ls"
                 )
                 cursor = max(cursor, value_y + unit_font.size + detail_spacing)
@@ -273,12 +279,14 @@ class WeatherOverviewPane(Pane):
                         f"{int(precip)}",
                         daily_rain_label_y,
                         daily_rain_value_y,
-                        unit_text="%"
+                        unit_text="%",
+                        value_color=palette.PRECIP
                     )
                 )
             else:
                 rain_label_y = detail_cursor - detail_label_offset
                 detail_cursor = max(
                     detail_cursor,
-                    draw_detail_block(precip_label, f"{int(precip)}", rain_label_y, unit_text="%")
+                    draw_detail_block(precip_label, f"{int(precip)}", rain_label_y,
+                                      unit_text="%", value_color=palette.PRECIP)
                 )

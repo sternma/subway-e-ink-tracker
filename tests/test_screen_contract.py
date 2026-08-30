@@ -11,7 +11,13 @@ from services.subway_service import TrainArrival
 from services.subway_service import SubwayResult
 from ui.panes import BirdCollagePane, BirdPane, BirdProfilePane, RenderContext
 from ui.panes.bird_art import BirdArtLoader
-from ui.screens import build_bird_collage_screen, screen_manager
+from ui.screens import (
+    build_bird_collage_screen,
+    build_birds_screen,
+    build_bird_profile_screen,
+    build_named_bird_collage_screen,
+    screen_manager,
+)
 
 
 BIRD_ART_DIR = Path(__file__).parent / "fixtures" / "bird_art"
@@ -141,17 +147,10 @@ def _label_overlaps_bird_alpha(label_box, placement) -> bool:
 
 
 def test_screen_requirements_and_exact_order():
-    assert screen_manager.names() == [
-        "transit",
-        "bird-collage-named",
-        "birds",
-        "bird-profile",
-    ]
+    assert screen_manager.names() == ["transit"]
     assert "hello" not in screen_manager.names()
     assert "bird-collage" not in screen_manager.names()
     assert screen_manager.get("transit").requires() == {"weather", "subway"}
-    for name in ("bird-collage-named", "birds", "bird-profile"):
-        assert screen_manager.get(name).requires() == set()
 
 
 def test_transit_redraws_when_displayed_time_changes():
@@ -199,8 +198,9 @@ def test_bird_screens_redraw_when_observations_change():
     )))
 
     assert build_bird_collage_screen().should_redraw(current, prev)
-    for name in ("bird-collage-named", "birds", "bird-profile"):
-        assert screen_manager.get(name).should_redraw(current, prev)
+    assert build_named_bird_collage_screen().should_redraw(current, prev)
+    assert build_birds_screen().should_redraw(current, prev)
+    assert build_bird_profile_screen().should_redraw(current, prev)
 
 
 def test_unlabeled_collage_renders_without_labels():
